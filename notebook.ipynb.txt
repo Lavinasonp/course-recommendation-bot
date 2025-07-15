@@ -1,0 +1,38 @@
+!pip install -q duckduckgo-search transformers sentence-transformers
+from duckduckgo_search import DDGS
+from transformers import pipeline
+from sentence_transformers import SentenceTransformer, util
+import torch
+
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+embedder = SentenceTransformer("all-MiniLM-L6-v2")
+
+user_input = input("💬 What would you like to learn today? (e.g., data science, UI design, finance): ")
+
+print("\n🔎 Searching the web for top courses...")
+results = []
+with DDGS() as ddgs:
+    for r in ddgs.text(f"{user_input} site:coursera.org OR site:edx.org OR site:udemy.com", max_results=5):
+        results.append(r)
+
+course_descriptions = []
+for r in results:
+    title = r['title']
+    desc = r.get('body', '')
+    url = r['href']
+    course_descriptions.append(f"{title}\n{desc}\n{url}")
+
+print("\n🧠 AI is summarizing the most relevant courses...\n")
+summarized_courses = []
+for text in course_descriptions:
+    summary = summarizer(text, max_length=60, min_length=25, do_sample=False)[0]['summary_text']
+    summarized_courses.append(summary)
+
+user_vec = embedder.encode(user_input, convert_to_tensor=True)
+summ_vecs = embedder.encode(summarized_courses, convert_to_tensor=True)
+scores = util.cos_sim(user_vec, summ_vecs)[0]
+top_k = torch.topk(scores, k=3)
+
+print("🎓 Top Course Recommendations for You:\n")
+for idx in top_k.indices:
+    print(f"- {summarized_courses[idx]}")
